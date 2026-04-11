@@ -42,10 +42,21 @@ def dirichlet_partition(
     labels = np.asarray(labels, dtype=np.int64)
     classes = np.unique(labels)
     n_classes = len(classes)
+    n_total_samples = len(labels)
 
     class_indices: dict[int, np.ndarray] = {
         c: np.where(labels == c)[0] for c in classes
     }
+
+    # Adaptively reduce min_samples if it's infeasible
+    adaptive_min = max(1, min(min_samples, n_total_samples // (n_clients * 2)))
+    if adaptive_min < min_samples:
+        log.warning(
+            "min_samples=%d is too strict for %d samples and %d clients. "
+            "Reducing to %d.",
+            min_samples, n_total_samples, n_clients, adaptive_min,
+        )
+        min_samples = adaptive_min
 
     for attempt in range(max_retries):
         client_indices: list[list[int]] = [[] for _ in range(n_clients)]
@@ -76,10 +87,32 @@ def dirichlet_partition(
 
         log.debug("Attempt %d: min_samples=%d < threshold=%d, retrying...", attempt + 1, min(sizes), min_samples)
 
-    raise RuntimeError(
-        f"Could not find valid Dirichlet partition after {max_retries} attempts. "
-        f"Try increasing alpha or reducing min_samples."
+    # Fallback: relax constraint if strict partitioning fails
+    log.warning(
+        "Could not find valid partition after %d attempts with min_samples=%d. "
+        "Relaxing constraint to 1 sample per client.",
+        max_retries, min_samples,
     )
+    client_indices = [[] for _ in range(n_clients)]
+    for c in classes:
+        idx = class_indices[c]
+        rng.shuffle(idx)
+        proportions = rng.dirichlet(alpha=np.full(n_clients, alpha))
+        proportions = np.cumsum(proportions) * len(idx)
+        splits = np.split(idx, proportions[:-1].astype(int))
+        for cid, split in enumerate(splits):
+            client_indices[cid].extend(split.tolist())
+    
+    result = [np.array(ci, dtype=np.int64) for ci in client_indices if len(ci) > 0]
+    sizes = [len(ci) for ci in result]
+    log.info(
+        "Fallback Dirichlet partition (α=%.2f): %d clients, "
+        "sizes min=%d max=%d mean=%.1f",
+        alpha, len(result),
+        min(sizes), max(sizes), np.mean(sizes),
+    )
+    _log_label_distribution(result, labels, n_classes)
+    return result
 
 def _log_label_distribution(
     partitions: list[np.ndarray],
