@@ -1,22 +1,3 @@
-"""Run FL simulation — in-process Flower VirtualClientEngine.
-
-Usage:
-    python scripts/run_sim.py
-    python scripts/run_sim.py --scenario noniid_20
-    python scripts/run_sim.py --scenario dp_enabled --rounds 10
-    python scripts/run_sim.py --scenario fedprox --rounds 20 --results_dir results/fedprox_run
-    python scripts/run_sim.py --list_scenarios
-
-Available scenarios (from simulation.yaml):
-    iid_20          20 clients, IID, FedAvg, no DP
-    noniid_20       20 clients, non-IID (α=0.5), FedAvg, no DP
-    noniid_extreme  20 clients, extreme non-IID (α=0.1)
-    dp_enabled      20 clients, non-IID, FedAvg + DP-SGD (ε=3.0)
-    fedprox         20 clients, non-IID, FedProx (μ=0.01)
-    trimmed_mean    20 clients, non-IID, TrimmedMean defense
-    quick_test      5 clients, 3 rounds — smoke test
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -32,7 +13,6 @@ from src.utils.logging import get_logger
 from src.utils.seed import set_seed
 
 log = get_logger(__name__)
-
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
@@ -84,7 +64,6 @@ def parse_args() -> argparse.Namespace:
     )
     return p.parse_args()
 
-
 def main() -> None:
     args = parse_args()
 
@@ -95,7 +74,6 @@ def main() -> None:
         print()
         sys.exit(0)
 
-    # ── Load and optionally override scenario config ──────────────────────────
     sim_cfg = get_scenario(args.scenario, configs_dir=args.configs_dir)
 
     if args.rounds is not None:
@@ -119,16 +97,13 @@ def main() -> None:
         set_seed(args.seed)
         log.info("Override: seed=%d", args.seed)
 
-    # ── Run simulation ────────────────────────────────────────────────────────
     log.info("Starting simulation: %s", sim_cfg.summary())
-
     history = run_simulation(
         sim_cfg=sim_cfg,
         results_dir=args.results_dir,
         mlflow_enabled=args.mlflow,
     )
 
-    # ── Post-simulation reporting ─────────────────────────────────────────────
     if history.losses_distributed:
         rounds_completed = len(history.losses_distributed)
         final_round, final_loss = max(history.losses_distributed, key=lambda x: x[0])
@@ -137,7 +112,6 @@ def main() -> None:
             rounds_completed, final_loss,
         )
 
-    # ── Convergence plot ──────────────────────────────────────────────────────
     if args.plot and not args.no_plot:
         try:
             plot_path = plot_convergence(
