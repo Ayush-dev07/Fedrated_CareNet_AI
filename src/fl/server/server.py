@@ -8,6 +8,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from src.fl.server.evaluator import make_evaluate_fn
+from src.fl.server.secure_aggregation import setup_secure_aggregation
 from src.fl.server.strategies.fedavg import CustomFedAvg
 from src.fl.server.strategies.fedprox import CustomFedProx
 from src.fl.server.strategies.trimmed_mean import TrimmedMean
@@ -48,6 +49,12 @@ def build_strategy(
         metrics_tracker=metrics_tracker,
     )
 
+    # Setup secure aggregation if enabled
+    secure_agg = setup_secure_aggregation(fl_cfg)
+    if secure_agg is not None:
+        base_kwargs["secure_aggregation"] = secure_agg
+        log.info("Secure aggregation enabled in strategy")
+
     if val_loader is not None:
         global_model = get_model(model_cfg)
         evaluate_fn  = make_evaluate_fn(
@@ -72,12 +79,14 @@ def build_strategy(
     else:
         strategy = CustomFedAvg(**base_kwargs)
 
+    sa_status = "enabled" if secure_agg is not None else "disabled"
     log.info(
-        "Strategy: %s | fraction_fit=%.2f | min_fit=%d | eval=%s",
+        "Strategy: %s | fraction_fit=%.2f | min_fit=%d | eval=%s | secure_agg=%s",
         strategy_name,
         base_kwargs["fraction_fit"],
         base_kwargs["min_fit_clients"],
         "enabled" if val_loader is not None else "disabled",
+        sa_status,
     )
 
     return strategy
